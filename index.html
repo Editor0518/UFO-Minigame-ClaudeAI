@@ -836,6 +836,37 @@ drawSun(x, y) {
         window.addEventListener('load', () => {
             new UFOGame();
         });
+        // 기존 클래스 내부에 다음 필드를 추가:
+        this.missiles = []; // 미사일 배열
+        this.lastMissileTime = 0; // 마지막 발사 시간
+        
+        // update() 함수 내 UFO 이동 이후에 다음 코드 추가:
+        if (this.keys['KeyZ']) { // Z키로 미사일 발사
+            if (Date.now() - this.lastMissileTime > 300) {
+                this.missiles.push({
+                    x: this.ufo.x + this.ufo.width / 2 - 2,
+                    y: this.ufo.y,
+                    width: 4,
+                    height: 10,
+                    speed: 8
+                });
+                this.lastMissileTime = Date.now();
+            }
+        }
+        
+        // update() 함수 마지막에 미사일 이동 로직 추가:
+        this.missiles = this.missiles.filter(m => {
+            m.y -= m.speed;
+            return m.y + m.height > 0;
+        });
+        
+        // draw() 함수 내 UFO 그리기 이후에 다음 코드 추가:
+        this.ctx.fillStyle = 'yellow';
+        this.missiles.forEach(missile => {
+            this.ctx.fillRect(missile.x, missile.y, missile.width, missile.height);
+        });
+
+      
     </script>
 </body>
 </html>
