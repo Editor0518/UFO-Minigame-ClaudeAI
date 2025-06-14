@@ -1,50 +1,64 @@
 drawSun(x, y) {
-                // 거대한 태양 (150x150 픽셀)
-                const sunSize = 150;
-                const pixelSize = 3;
-                const time = Date.now() * 0.003;
-                
-                // 태양 본체 그리기
-                for (let row = 0; row < sunSize / pixelSize; row++) {
-                    for (let col = 0; col < sunSize / pixelSize; col++) {
-                        const centerX = (sunSize / pixelSize) / 2;
-                        const centerY = (sunSize / pixelSize) / 2;
-                        const distance = Math.sqrt((col - centerX) ** 2 + (row - centerY) ** 2);
-                        
-                        if (distance < centerX - 2) {
-                            // 태양 중심부
-                            const intensity = 1 - (distance / centerX);
-                            const hue = 30 + Math.sin(time + row * 0.1 + col * 0.1) * 20;
-                            const lightness = 50 + intensity * 40;
-                            this.ctx.fillStyle = `hsl(${hue}, 100%, ${lightness}%)`;
-                            
-                            this.ctx.fillRect(
-                                x + col * pixelSize,
-                                y + row * pixelSize,
-                                pixelSize,
-                                pixelSize
-                            );
-                        }
-                    }
+    const sunSize = 150;
+    const pixelSize = 5; // 성능을 위해 3 → 5로 조정
+    const time = Date.now() * 0.003;
+    
+    const gridSize = Math.floor(sunSize / pixelSize);
+    const centerX = gridSize / 2;
+    const centerY = gridSize / 2;
+
+    // 캐시용 fillStyle 저장
+    let lastFillStyle = '';
+
+    for (let row = 0; row < gridSize; row++) {
+        for (let col = 0; col < gridSize; col++) {
+            const dx = col - centerX;
+            const dy = row - centerY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < centerX - 1.5) {
+                const intensity = 1 - (distance / centerX);
+                const hue = 30 + Math.sin(time + row * 0.1 + col * 0.1) * 20;
+                const lightness = 50 + intensity * 40;
+                const color = `hsl(${hue}, 100%, ${lightness}%)`;
+
+                // fillStyle 중복 방지
+                if (color !== lastFillStyle) {
+                    this.ctx.fillStyle = color;
+                    lastFillStyle = color;
                 }
-                
-                // 태양 광선 효과
-                const rayCount = 16;
-                for (let i = 0; i < rayCount; i++) {
-                    const angle = (i / rayCount) * Math.PI * 2 + time;
-                    const rayLength = 80 + Math.sin(time * 2 + i) * 20;
-                    const rayX = x + sunSize / 2 + Math.cos(angle) * rayLength;
-                    const rayY = y + sunSize / 2 + Math.sin(angle) * rayLength;
-                    
-                    this.ctx.strokeStyle = `rgba(255, 200, 0, 0.8)`;
-                    this.ctx.lineWidth = 4;
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(x + sunSize / 2, y + sunSize / 2);
-                    this.ctx.lineTo(rayX, rayY);
-                    this.ctx.stroke();
-                }
+
+                this.ctx.fillRect(
+                    x + col * pixelSize,
+                    y + row * pixelSize,
+                    pixelSize,
+                    pixelSize
+                );
             }
-            
+        }
+    }
+
+    // 광선 효과
+    const rayCount = 16;
+    const sunCenterX = x + sunSize / 2;
+    const sunCenterY = y + sunSize / 2;
+
+    this.ctx.strokeStyle = `rgba(255, 200, 0, 0.8)`;
+    this.ctx.lineWidth = 4;
+
+    for (let i = 0; i < rayCount; i++) {
+        const angle = (i / rayCount) * Math.PI * 2 + time;
+        const rayLength = 80 + Math.sin(time * 2 + i) * 20;
+        const rayX = sunCenterX + Math.cos(angle) * rayLength;
+        const rayY = sunCenterY + Math.sin(angle) * rayLength;
+
+        this.ctx.beginPath();
+        this.ctx.moveTo(sunCenterX, sunCenterY);
+        this.ctx.lineTo(rayX, rayY);
+        this.ctx.stroke();
+    }
+}
+
             drawSpeedItem(x, y) {
                 // 날개 모양 아이템 (20x20 픽셀)
                 const wingPattern = [
