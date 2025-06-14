@@ -1,79 +1,337 @@
-// 수정된 drawSun 함수 - 퍼포먼스 개선 및 멈춤 현상 제거
-// 문제 원인: drawSun 내 연산 과다 및 requestAnimationFrame 차단
-// 해결 방식: canvas에 한 번만 렌더링한 태양 이미지를 캐싱하여 사용
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>UFO 운석 피하기 게임</title>
+  <style>
+    /* 페이지·캔버스 초기화 */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
+    body { display: flex; justify-content: center; align-items: center; }
+    canvas { background: #111; image-rendering: pixelated; }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="360" height="640"></canvas>
+  <script>
+  (() => {
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    
+    // ▶ 유저 입력 상태
+    let keys = { left:false, right:false };
+    let touchSides = { left:false, right:false };
 
-class UFOGame {
-  constructor() {
-    this.canvas = document.getElementById("gameCanvas");
-    this.ctx = this.canvas.getContext("2d");
-    this.sunCanvas = null;
-    this.sunCtx = null;
-    this.sunImageGenerated = false;
-    this.generateSunImage(); // 한 번만 생성
-  }
+    // ▶ 게임 상태
+    let state = 'start'; // start, running, gameover
+    let startTime = 0, elapsed = 0;
+    
+    // ▶ UFO 설정
+    const pixelSize = 4;         // 도트 픽셀 크기
+    const gridRadius = 10;       // 반원 반지름(픽셀 단위)
+    const UFO = {
+      x: W/2, y: H - gridRadius*pixelSize - 10,
+      speed: 2.5, baseSpeed: 2.5,
+      radius: gridRadius * pixelSize,
+      shield: false, shieldTime: 0,
+      speedBoost: false, boostTime: 0
+    };
+    
+    // ▶ 오브젝트 배열
+    let meteors = [], missiles = [], items = [];
+    
+    // ▶ 스폰/속도 증가
+    let lastMeteor = 0, meteorInterval = 1000;
+    let lastItem = 0, itemInterval = 8000;
+    
+    // ▶ 미사일 자동 발사
+    const missileInterval = 1000;
+    let lastMissile = 0;
+    
+    // ▶ 태양 공격
+    let nextSun = 30, // 초 단위
+        warningDur = 3,
+        sunDur = 8;
+    let sunActive = false, warning = false;
+    
+    // ▶ 이벤트 핸들러
+    window.addEventListener('keydown', e => {
+      if (e.code==='ArrowLeft') keys.left = true;
+      if (e.code==='ArrowRight') keys.right = true;
+      if (e.code==='Space') {
+        if (state==='start'||state==='gameover') init();
+      }
+    });
+    window.addEventListener('keyup', e => {
+      if (e.code==='ArrowLeft') keys.left = false;
+      if (e.code==='ArrowRight') keys.right = false;
+    });
+    canvas.addEventListener('touchstart', e => {
+      e.preventDefault();
+      for (let t of e.touches) {
+        if (t.clientX < canvas.getBoundingClientRect().left + W/2) touchSides.left = true;
+        else touchSides.right = true;
+      }
+      if (state==='start'||state==='gameover') init();
+    }, {passive:false});
+    canvas.addEventListener('touchend', e => {
+      e.preventDefault();
+      // 남은 터치가 없으면 멈춤
+      if (e.touches.length===0) {
+        touchSides.left = touchSides.right = false;
+      }
+    }, {passive:false});
 
-  generateSunImage() {
-    const sunSize = 150;
-    const pixelSize = 5;
-    const gridSize = Math.floor(sunSize / pixelSize);
-    const centerX = gridSize / 2;
-    const centerY = gridSize / 2;
-    const canvas = document.createElement("canvas");
-    canvas.width = sunSize;
-    canvas.height = sunSize;
-    const ctx = canvas.getContext("2d");
+    // ▶ 초기화
+    function init(){
+      state = 'running';
+      startTime = performance.now()/1000;
+      elapsed = 0;
+      meteors = []; missiles = []; items = [];
+      lastMeteor = lastItem = lastMissile = performance.now();
+      nextSun = elapsed + 30;
+      UFO.x = W/2; UFO.speed = UFO.baseSpeed;
+      UFO.shield = UFO.speedBoost = false;
+    }
 
-    for (let row = 0; row < gridSize; row++) {
-      for (let col = 0; col < gridSize; col++) {
-        const dx = col - centerX;
-        const dy = row - centerY;
-        const distance = Math.sqrt(dx * dx + dy * dy);
+    // ▶ 메인 루프
+    function loop(){
+      const now = performance.now();
+      const t = now/1000;
+      if (state==='running') {
+        elapsed = t - startTime;
+        update(elapsed);
+      }
+      draw();
+      requestAnimationFrame(loop);
+    }
 
-        if (distance < centerX - 1.5) {
-          const intensity = 1 - distance / centerX;
-          const hue = 30;
-          const lightness = 50 + intensity * 40;
-          ctx.fillStyle = `hsl(${hue}, 100%, ${lightness}%)`;
-          ctx.fillRect(
-            col * pixelSize,
-            row * pixelSize,
-            pixelSize,
-            pixelSize
-          );
+    // ▶ 업데이트
+    function update(dt){
+      // -- UFO 이동
+      let mv = 0;
+      if (keys.left||touchSides.left) mv -= 1;
+      if (keys.right||touchSides.right) mv += 1;
+      UFO.x += mv * UFO.speed;
+      UFO.x = Math.max(UFO.radius, Math.min(W-UFO.radius, UFO.x));
+
+      // -- 쉘드/부스트 시간 관리
+      if (UFO.shield){
+        UFO.shieldTime -= dt ? 1/60 : 0;
+        if (UFO.shieldTime<=0) UFO.shield=false;
+      }
+      if (UFO.speedBoost){
+        UFO.boostTime -= dt ? 1/60 : 0;
+        if (UFO.boostTime<=0){
+          UFO.speedBoost=false;
+          UFO.speed = UFO.baseSpeed;
         }
+      }
+
+      // -- 태양 단계
+      if (!sunActive && !warning && elapsed >= nextSun - warningDur){
+        warning = true;
+      }
+      if (warning && elapsed >= nextSun){
+        warning = false;
+        sunActive = true;
+        meteors = []; // 운석 모두 삭제
+      }
+      if (sunActive && elapsed >= nextSun + sunDur){
+        sunActive = false;
+        nextSun = elapsed + 60; // 다음 태양 60초 후
+      }
+
+      // -- 운석 스폰
+      if (!sunActive && !warning && now - lastMeteor > meteorInterval){
+        spawnMeteor();
+        lastMeteor = now;
+        // 점점 빠르게/많이
+        meteorInterval = Math.max(300, 1000 - elapsed*5);
+      }
+
+      // -- 아이템 스폰
+      if (!sunActive && !warning && now - lastItem > itemInterval){
+        spawnItem();
+        lastItem = now;
+      }
+
+      // -- 미사일 자동 발사
+      if (now - lastMissile > missileInterval){
+        missiles.push({ x:UFO.x, y:UFO.y - UFO.radius, speed:5 });
+        lastMissile = now;
+      }
+
+      // -- 운석 업데이트/충돌
+      meteors.forEach((m,i) => {
+        m.y += m.speed;
+        // UFO 충돌
+        const dx = m.x - UFO.x,
+              dy = m.y - UFO.y;
+        if (Math.hypot(dx,dy) < m.size + UFO.radius){
+          if (UFO.shield){
+            meteors.splice(i,1);
+          } else {
+            state = 'gameover';
+          }
+        }
+        // 미사일 충돌
+        missiles.forEach((mi, miIdx) => {
+          if (mi.x > m.x - m.size && mi.x < m.x + m.size &&
+              mi.y > m.y - m.size && mi.y < m.y + m.size){
+            meteors.splice(i,1);
+            missiles.splice(miIdx,1);
+          }
+        });
+        // 화면 벗어나면 제거
+        if (m.y > H + m.size) meteors.splice(i,1);
+      });
+
+      // -- 미사일 업데이트
+      missiles.forEach((m,i) => {
+        m.y -= m.speed;
+        if (m.y < -10) missiles.splice(i,1);
+      });
+
+      // -- 아이템 업데이트/획득
+      items.forEach((it,i) => {
+        it.y += it.speed;
+        // 획득
+        const dx = it.x - UFO.x, dy = it.y - UFO.y;
+        if (Math.hypot(dx,dy) < UFO.radius + it.size){
+          if (it.type==='shield'){
+            UFO.shield = true; UFO.shieldTime = 5;
+          } else if (it.type==='speed'){
+            UFO.speedBoost = true; UFO.boostTime = 5; UFO.speed = UFO.baseSpeed*1.8;
+          }
+          items.splice(i,1);
+        }
+        if (it.y > H + it.size) items.splice(i,1);
+      });
+    }
+
+    // ▶ 그리기
+    function draw(){
+      ctx.clearRect(0,0,W,H);
+      // 1) 배경
+      ctx.fillStyle = '#111';
+      ctx.fillRect(0,0,W,H);
+
+      // 2) warning
+      if (warning){
+        ctx.fillStyle = 'rgba(255,0,0,0.7)';
+        ctx.fillRect(0,0,W,H);
+        ctx.fillStyle = '#fff';
+        ctx.font = '24px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('WARNING: SUN INCOMING!', W/2, H/2);
+      }
+
+      // 3) 태양
+      if (sunActive){
+        ctx.fillStyle = 'orange';
+        ctx.beginPath();
+        ctx.arc(W/2, (elapsed - nextSun)* (H+H/3) / sunDur - H/3/2, W/1.8, 0, Math.PI*2);
+        ctx.fill();
+      }
+
+      // 4) 운석
+      meteors.forEach(m => {
+        ctx.fillStyle = m.color;
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, m.size, 0,Math.PI*2);
+        ctx.fill();
+      });
+
+      // 5) 아이템
+      items.forEach(it => {
+        ctx.fillStyle = it.type==='shield' ? 'cyan' : 'lime';
+        ctx.beginPath();
+        ctx.arc(it.x, it.y, it.size, 0,Math.PI*2);
+        ctx.fill();
+      });
+
+      // 6) 미사일
+      ctx.fillStyle = '#ff0';
+      missiles.forEach(m => ctx.fillRect(m.x-2, m.y-10, 4, 10));
+
+      // 7) UFO (도트맵 반원)
+      const cx = UFO.x - gridRadius*pixelSize;
+      const cy = UFO.y - gridRadius*pixelSize;
+      ctx.fillStyle = '#0af';
+      for (let row=0; row<gridRadius; row++){
+        for (let col=0; col<gridRadius*2; col++){
+          const dx = col - gridRadius;
+          const dy = gridRadius - row;
+          if (dx*dx + dy*dy <= gridRadius*gridRadius){
+            ctx.fillRect(cx + col*pixelSize, cy + row*pixelSize, pixelSize, pixelSize);
+          }
+        }
+      }
+      // 8) 방패 이펙트
+      if (UFO.shield){
+        ctx.strokeStyle = 'cyan';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(UFO.x, UFO.y, UFO.radius+4, 0, Math.PI*2);
+        ctx.stroke();
+      }
+
+      // 9) 시간 표시
+      if (state==='running'){
+        ctx.fillStyle='#fff';
+        ctx.font='16px monospace';
+        ctx.textAlign='right';
+        ctx.fillText(`${elapsed.toFixed(1)}s`, W-10, 20);
+      }
+
+      // 10) 시작/게임오버 메시지
+      if (state==='start'){
+        ctx.fillStyle='#fff';
+        ctx.font='20px sans-serif';
+        ctx.textAlign='center';
+        ctx.fillText('스페이스바(또는 터치)로 시작', W/2, H/2);
+      } else if (state==='gameover'){
+        ctx.fillStyle='red';
+        ctx.font='30px sans-serif';
+        ctx.textAlign='center';
+        ctx.fillText('Game Over', W/2, H/2 - 20);
+        ctx.fillStyle='#fff';
+        ctx.font='18px sans-serif';
+        ctx.fillText('스페이스바(또는 터치)로 재시작', W/2, H/2 + 20);
       }
     }
 
-    this.sunCanvas = canvas;
-    this.sunCtx = ctx;
-    this.sunImageGenerated = true;
-  }
-
-  drawSun(x, y) {
-    if (this.sunImageGenerated && this.sunCanvas) {
-      this.ctx.drawImage(this.sunCanvas, x, y);
+    // ▶ 운석 생성
+    function spawnMeteor(){
+      const size = 8 + Math.random()*16;
+      const speed = 1 + elapsed*0.02 + Math.random()*1.5;
+      const colors = ['#f33','#f93','#fc3','#c30'];
+      meteors.push({
+        x: Math.random()*(W-2*size)+size,
+        y: -size,
+        size, speed,
+        color: colors[Math.floor(Math.random()*colors.length)]
+      });
     }
 
-    // 광선 효과는 실시간 연산 가능하므로 유지
-    const rayCount = 16;
-    const sunSize = 150;
-    const time = Date.now() * 0.003;
-    const sunCenterX = x + sunSize / 2;
-    const sunCenterY = y + sunSize / 2;
-
-    this.ctx.strokeStyle = `rgba(255, 200, 0, 0.8)`;
-    this.ctx.lineWidth = 4;
-
-    for (let i = 0; i < rayCount; i++) {
-      const angle = (i / rayCount) * Math.PI * 2 + time;
-      const rayLength = 80 + Math.sin(time * 2 + i) * 20;
-      const rayX = sunCenterX + Math.cos(angle) * rayLength;
-      const rayY = sunCenterY + Math.sin(angle) * rayLength;
-
-      this.ctx.beginPath();
-      this.ctx.moveTo(sunCenterX, sunCenterY);
-      this.ctx.lineTo(rayX, rayY);
-      this.ctx.stroke();
+    // ▶ 아이템 생성
+    function spawnItem(){
+      const type = Math.random()<0.2 ? 'shield' : 'speed';
+      items.push({
+        x: Math.random()*(W-20)+10,
+        y: -10,
+        size: type==='shield'?12:8,
+        speed: 1.2,
+        type
+      });
     }
-  }
-}
+
+    // ▶ 시작!
+    loop();
+  })();
+  </script>
+</body>
+</html>
