@@ -13,7 +13,20 @@
   </style>
 </head>
 <body>
+  <!-- ✗ 잘못된 예시: canvas 안에 JS 코드가 들어가 있음 -->
+  <canvas id="gameCanvas" width="360" height="640">
+    awSun(x, y) { /* … */ }   ← 이 부분이 화면에 그대로 노출됩니다.
+  </canvas>
+  
+  <!-- ✓ 올바른 예시: canvas 내부는 비워두고, script 블록에서 그립니다. -->
   <canvas id="gameCanvas" width="360" height="640"></canvas>
+  <script>
+    function drawSun(x, y) {
+      // …여기에만 태양 그리기 로직을 작성…
+    }
+    // 메인 루프에서 drawSun 호출
+  </script>
+
   <script>
   (() => {
     const canvas = document.getElementById('gameCanvas');
