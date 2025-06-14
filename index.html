@@ -13,19 +13,18 @@
   </style>
 </head>
 <body>
-  <!-- ✗ 잘못된 예시: canvas 안에 JS 코드가 들어가 있음 -->
-  <canvas id="gameCanvas" width="360" height="640">
-    awSun(x, y) { /* … */ }   ← 이 부분이 화면에 그대로 노출됩니다.
-  </canvas>
-  
-  <!-- ✓ 올바른 예시: canvas 내부는 비워두고, script 블록에서 그립니다. -->
-  <canvas id="gameCanvas" width="360" height="640"></canvas>
+   <canvas id="gameCanvas" width="360" height="640" tabindex="0"></canvas>
   <script>
-    function drawSun(x, y) {
-      // …여기에만 태양 그리기 로직을 작성…
-    }
-    // 메인 루프에서 drawSun 호출
+    const canvas = document.getElementById('gameCanvas');
+    canvas.focus();           // 페이지 로드 직후 포커스
+    canvas.addEventListener('keydown', e => {
+      if (e.code === 'Space' /* … */) {
+        // 시작/재시작
+        init();
+      }
+    });
   </script>
+
 
   <script>
   (() => {
@@ -70,13 +69,14 @@
     let sunActive = false, warning = false;
     
     // ▶ 이벤트 핸들러
+   // 스크립트가 <body> 맨 아래에 있거나, DOMContentLoaded 이후 실행된다고 가정
     window.addEventListener('keydown', e => {
-      if (e.code==='ArrowLeft') keys.left = true;
-      if (e.code==='ArrowRight') keys.right = true;
-      if (e.code==='Space') {
-        if (state==='start'||state==='gameover') init();
+      // e.code 와 e.keyCode, e.key를 모두 체크
+      if (e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar' || e.keyCode === 32) {
+        if (state === 'start' || state === 'gameover') init();
       }
     });
+
     window.addEventListener('keyup', e => {
       if (e.code==='ArrowLeft') keys.left = false;
       if (e.code==='ArrowRight') keys.right = false;
