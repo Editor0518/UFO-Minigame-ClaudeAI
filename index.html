@@ -104,13 +104,15 @@ drawSun(x, y) {
             overflow: hidden;
         }
         
-       #gameContainer {
-          position: relative;
-          width: 400px;       /* 👈 추가 */
-          height: 700px;      /* 👈 추가 */
-          border: 3px solid #fff;
-          box-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
-      }
+        #gameContainer {
+            width: 400px;          /* 캔버스와 같은 크기 */
+            height: 700px;         /* 세로형 게임 */
+            margin: auto;          /* 가운데 정렬 */
+            position: relative;
+            border: 3px solid #fff;
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+        }
+
 
         
         #gameCanvas {
@@ -231,7 +233,7 @@ drawSun(x, y) {
 <body>
     <div id="gameContainer">
         <canvas id="gameCanvas" width="400" height="700"></canvas>
-        
+
         <div id="ui">
             <div>생존 시간: <span id="timer">0</span>초</div>
         </div>
@@ -296,12 +298,12 @@ drawSun(x, y) {
                 this.shields = [];
                 this.shieldActive = false;
                 this.shieldEndTime = 0;
-                this.shieldSpawnRate = 0.001; // 방패 출현 빈도 감소
+               this.shieldSpawnRate = 0.0004; // 더 낮게 설정 (기존: 0.001)
                 
                 this.speedBoosts = [];
                 this.speedActive = false;
                 this.speedEndTime = 0;
-                this.speedSpawnRate = 0.002;
+               this.speedSpawnRate = 0.0015; // 적당한 빈도로 조절
                 
                 this.sun = null;
                 this.sunWarning = false;
@@ -450,12 +452,13 @@ drawSun(x, y) {
                     this.sunWarning = false;
                     document.getElementById('warning').style.display = 'none';
                     this.sun = {
-                        x: -150,
+                        x: -250,
                         y: this.canvas.height * 0.3,
-                        width: 150,
+                        width: this.canvas.width * 0.9, // 3분의 1 이상 차지
                         height: 150,
-                        speed: 1.5
+                        speed: 0.5
                     };
+
                     this.lastSunTime = currentTime;
                 }
                 
